@@ -1,8 +1,10 @@
 import {toProperCase} from "./util";
 import {changeGraph} from "./change-graph";
 import * as Types from "@babel/types";
+import {compileType, CompileType} from "./type-creator";
+import {equals} from "ramda";
 
-type RegistryRecord = Record<string, string|string[]>
+type RegistryRecord = Record<string, CompileType|CompileType[]>
 
 interface RegistryState{
     type: string;
@@ -10,7 +12,7 @@ interface RegistryState{
 }
 
 export interface Registry {
-    add: (id: string, record: Record<string, string>) => string,
+    add: (id: string, record: Record<string, CompileType>) => string,
     compile: () => Types.Program
 }
 
@@ -33,14 +35,14 @@ const safeNameCreator = (namespace: Set<string>) => {
     return getSafeName;
 };
 
-const merge = (existing: RegistryRecord, toMerge: Record<string, string>) => {
+const merge = (existing: RegistryRecord, toMerge: Record<string, CompileType>) => {
     let didUpdate = false;
 
     Object.entries(existing).forEach(([k, v]) => {
         const right = toMerge[k];
         if(
-            (Array.isArray(v) && !v.includes(right))
-            || v !== right
+            (Array.isArray(v) && !v.some((x) => equals(x, right)))
+            || !equals(v, right)
         ){
             existing[k] = Array.isArray(v) ? [...v, right] : [v, right];
             didUpdate = true;
@@ -63,7 +65,7 @@ export const registry = (): Registry => {
         return getSafeName(potentialName+existingName);
     };
 
-    const update = (id: string, signature: string, record: Record<string, string>) => {
+    const update = (id: string, signature: string, record: Record<string, CompileType>) => {
         const {type: existingType, record: existingRecord} = state.get(signature)!;
 
         if(!merge(existingRecord, record)) return existingType;
@@ -82,7 +84,7 @@ export const registry = (): Registry => {
         return newName;
     };
 
-    const insert = (id: string, signature: string, record: Record<string, string>) => {
+    const insert = (id: string, signature: string, record: Record<string, CompileType>) => {
         const type = getSafeName(toProperCase(id));
 
         state.set(signature, {
@@ -93,8 +95,24 @@ export const registry = (): Registry => {
         return type;
     };
 
+    const compileRecord = (record: RegistryRecord) =>
+        Types.objectExpression(
+            Object.entries(record).map(
+                ([ident, type]) => Types.objectProperty(
+                    Types.identifier(ident),
+                    Array.isArray(type)
+                        ? Types.callExpression(
+                            Types.identifier("Union"),
+                            type.map(compileType)
+                        )
+                        : compileType(type)
+                )
+            )
+        );
+
+
     return {
-        add: (id: string, record: Record<string, string>) => {
+        add: (id: string, record: Record<string, CompileType>) => {
             const signature = getRecordSignature(record);
 
             if(state.has(signature)){
@@ -111,11 +129,30 @@ export const registry = (): Registry => {
                            Types.identifier("RT")
                        )
                    ],
-                   Types.stringLiteral("runTypes")
+                   Types.stringLiteral("runtypes")
                )
             ]);
 
-            //compile registry
+            for(const {type, record} of state.values()){
+                const recordNode = Types.callExpression(
+                    Types.identifier("Record"),
+                    [compileRecord(record)]
+                );
+
+                program.body.push(
+                    Types.exportNamedDeclaration(
+                        Types.variableDeclaration(
+                            "const",
+                            [
+                                Types.variableDeclarator(
+                                    Types.identifier(type),
+                                    recordNode
+                                )
+                            ]
+                        )
+                    )
+                );
+            }
 
             return program;
         },
