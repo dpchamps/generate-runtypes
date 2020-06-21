@@ -1,19 +1,22 @@
 import { parseAndTraverse } from "./traverse-entry";
-import { runtypeVisitor } from "./runtype-visitor";
+import {formatState, runtypeVisitor} from "./runtype-visitor";
 import { format } from "prettier";
 
 describe("RunType Visitor", () => {
   const formatExpectation = (code: string) => format(code, { parser: "babel" });
   const convert = (code: string) =>
-    parseAndTraverse(code, runtypeVisitor, {
-      output: "",
-      namespace: new Set<string>(),
-      shapes: new Map<string, string>(),
-    }).output;
+    formatState(
+        parseAndTraverse(code, runtypeVisitor, {
+          output: "",
+          namespace: new Set<string>(),
+          shapes: new Map<string, [string, Record<string, string>]>(),
+            changeGraph: {}
+        })
+    );
 
   it(`Converts basic records`, () => {
     const code = `
-       const basicJson = {
+       const basicJson = {  
          prop1: "Hello",
          prop2: 10,
          prop3: true,
@@ -57,12 +60,14 @@ describe("RunType Visitor", () => {
           magic: RT.Number,
         });
         export type Stats = RT.Static<typeof Stats>;
+        
         export const Prop1 = RT.Record({
           name: RT.String,
           occupation: RT.String,
           stats: Stats,
         });
         export type Prop1 = RT.Static<typeof Prop1>;
+        
         export const NestedJson = RT.Record({
           prop1: Prop1,
         });
@@ -115,13 +120,14 @@ describe("RunType Visitor", () => {
        `;
     const expectation = formatExpectation(`
 
-        export const AnonymousSchema = RT.Record({
+        export const Collection = RT.Record({
           name: RT.String,
           kingdom: RT.String,
         });
-        export type AnonymousSchema = RT.Static<typeof AnonymousSchema>;
+        export type Collection = RT.Static<typeof Collection>;
+        
         export const ComplexCollection = RT.Record({
-          collection: RT.Array(AnonymousSchema),
+          collection: RT.Array(Collection),
         });
         export type ComplexCollection = RT.Static<typeof ComplexCollection>;
         
@@ -129,6 +135,33 @@ describe("RunType Visitor", () => {
 
     expect(convert(code)).toEqual(expectation);
   });
+
+    it(`Converts collections with similar merged shapes`, () => {
+        const code = `
+       const complexCollection = {
+         collection: [
+           { name : "Jerry Seinfeld", comedy: "clean" },
+           { name : "Spinal Tap", comedy: 11 },
+         ]
+       }
+       `;
+        const expectation = formatExpectation(`
+            
+        export const Collection = RT.Record({
+          name: RT.String,
+          comedy: Union(RT.String, RT.Number),
+        });
+        export type Collection = RT.Static<typeof Collection>;
+        
+        export const ComplexCollection = RT.Record({
+          collection: RT.Array(Collection),
+        });
+        export type ComplexCollection = RT.Static<typeof ComplexCollection>;
+        
+      `);
+
+        expect(convert(code)).toEqual(expectation);
+    });
 
   it(`Converts deep collections`, () => {
     const code = `
@@ -176,25 +209,24 @@ describe("RunType Visitor", () => {
 
     const expectation = formatExpectation(`
 
-        export const Stats1 = RT.Record({
-          RBI: RT.Number,
-        });
-        export type Stats1 = RT.Static<typeof Stats1>;
-        export const Football = RT.Record({
-          stats: Stats1,
-        });
-        export type Football = RT.Static<typeof Football>;
         export const Stats = RT.Record({
           FGM: RT.Number,
         });
         export type Stats = RT.Static<typeof Stats>;
-        export const Basketball = RT.Record({
-          stats: Stats,
+        
+        export const FootballBasketball = RT.Record({
+          stats: Union(Stats, Stats1),
         });
-        export type Basketball = RT.Static<typeof Basketball>;
+        export type FootballBasketball = RT.Static<typeof FootballBasketball>;
+        
+        export const Stats1 = RT.Record({
+          RBI: RT.Number,
+        });
+        export type Stats1 = RT.Static<typeof Stats1>;
+        
         export const SportsBall = RT.Record({
-          basketball: Basketball,
-          football: Football,
+          basketball: FootballBasketball,
+          football: FootballBasketball,
         });
         export type SportsBall = RT.Static<typeof SportsBall>;
         

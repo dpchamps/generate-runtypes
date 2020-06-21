@@ -12,23 +12,32 @@ import {
   ObjectExpression,
   ObjectProperty,
 } from "@babel/types";
-import { zip } from "ramda";
 import { format as prettierFormat } from "prettier";
+import {equals} from "ramda";
 
 export interface VisitorState {
   output: string;
   namespace: Set<string>;
-  shapes: Map<string, string>;
+  shapes: Map<string, [string, Record<string, string>]>;
+  changeGraph: Record<string, string>;
 }
 
 interface TypeDeclarations {
   schemas: string[];
   staticTypes: string[];
-  recordName: string;
+  type?: string;
 }
 
+const camelCaseMatcher = /_(.)?/g;
+const camelCaseReplacer = (_: unknown, p1: string | undefined) =>
+  typeof p1 !== "undefined" ? p1.toUpperCase() : "";
+
 const toProperCase = (input: string) =>
-  `${input[0].toUpperCase()}${input.slice(1)}`;
+  `${input[0].toUpperCase()}${input.slice(1)}`.replace(
+    camelCaseMatcher,
+    camelCaseReplacer
+  );
+
 const isValidObjectProp = ({ computed }: ObjectProperty) => !computed;
 
 const getTypeFromFunctionExpression = (_node: Function) => `RT.Function`;
@@ -64,17 +73,44 @@ const getTypeFromLiteral = (node: Literal) => {
   }
 };
 
-const extractPropertyName = (objectProperty : NodePath<ObjectProperty>) => {
+const extractPropertyName = (objectProperty: NodePath<ObjectProperty>) => {
   const key = objectProperty.get("key");
 
-  if(key.isStringLiteral()){
+  if (key.isStringLiteral()) {
     return key.node.value;
-  }else if(key.isIdentifier()){
+  } else if (key.isIdentifier()) {
     return key.node.name;
   }
 
   throw new Error("Invalid property type");
-}
+};
+
+const merge = (
+  recordA: Record<string, string>,
+  recordB: Record<string, string>
+) => {
+  const merged: Record<string, string> = {};
+
+  Object.entries(recordA).forEach(([k, v]) => {
+    const strippedUnion = v.replace(/^Union\((.+)\)$/, "$1");
+    const right = recordB[k];
+    merged[k] = v.includes(right) ? v : `Union(${strippedUnion},${right})`;
+  });
+
+  return merged;
+};
+
+const followChangeGraph = (id: string, graph: Record<string, string>, iterations = 0) : string => {
+  if(iterations > 500){
+    throw new Error(`Oops, that's crazy!`);
+  }
+
+  if(id in graph){
+    return followChangeGraph(graph[id], graph, iterations + 1);
+  }
+
+  return id;
+};
 
 const extractSchemas = (
   path: NodePath<any>,
@@ -91,13 +127,13 @@ const extractSchemas = (
     const {
       schemas: subSchemas,
       staticTypes: subStaticTypes,
-      collectionType,
+      type,
     } = generateCollection(path, state, parentKey);
 
     return {
       schemas: [...subSchemas.flat()],
       staticTypes: [...subStaticTypes.flat()],
-      type: collectionType,
+      type,
     };
   } else if (path.isFunction()) {
     return {
@@ -109,13 +145,13 @@ const extractSchemas = (
     const {
       schemas: subSchemas,
       staticTypes: subStaticTypes,
-      recordName: subType,
+      type,
     } = generateRecord(parentKey || "AnonymousSchema", path, state);
 
     return {
       schemas: [...subSchemas.flat()],
       staticTypes: [...subStaticTypes.flat()],
-      type: subType,
+      type,
     };
   }
 
@@ -124,6 +160,7 @@ const extractSchemas = (
 
 const formatRecord = (
   record: Record<string, string | Record<string, string>>,
+  changeGraph: Record<string, string>,
   level = 1
 ): string =>
   "{\n" +
@@ -132,12 +169,12 @@ const formatRecord = (
 
     /* istanbul ignore else */
     if (typeof v === "string") {
-      return `${fmt}${indentation}${k}:${v},\n`;
+      return `${fmt}${indentation}${k}:${followChangeGraph(v, changeGraph)},\n`;
     }
 
     //todo: this is not a possible code path *yet*, but I'd rather leave it and have it tested if it ever becomes possible.
     /* istanbul ignore next */
-    const nested = formatRecord(v, level + 1);
+    const nested = formatRecord(v, changeGraph, level + 1);
     /* istanbul ignore next */
     return `${fmt}${indentation}${k}:${nested},\n`;
   }, "") +
@@ -147,7 +184,7 @@ const generateCollection = (
   path: NodePath<ArrayExpression>,
   state: VisitorState,
   parentKey?: string
-) => {
+): TypeDeclarations => {
   const types = new Set();
   const collection: unknown[] = [];
 
@@ -155,9 +192,13 @@ const generateCollection = (
   const staticTypes: string[] = [];
 
   for (const el of path.get("elements")) {
-    const {schemas: subSchemas, staticTypes: subStaticTypes, type} = extractSchemas(el, state, parentKey);
+    const {
+      schemas: subSchemas,
+      staticTypes: subStaticTypes,
+      type,
+    } = extractSchemas(el, state, parentKey);
 
-    if(!type) continue;
+    if (!type) continue;
 
     schemas.unshift(...subSchemas);
     staticTypes.unshift(...subStaticTypes);
@@ -165,14 +206,14 @@ const generateCollection = (
     collection.push(type);
   }
 
-  if(types.size === 0) return {schemas: [], staticTypes: []};
+  if (types.size === 0) return { schemas: [], staticTypes: [] };
 
   const collectionType =
     types.size === 1
       ? `RT.Array(${collection[0]})`
       : `RT.Tuple(${collection.join(", ")})`;
 
-  return { schemas, staticTypes, collectionType };
+  return { schemas, staticTypes, type: collectionType };
 };
 
 const generateRecord = (
@@ -181,7 +222,6 @@ const generateRecord = (
   state: VisitorState
 ): TypeDeclarations => {
   const record: Record<string, string> = {};
-  const typeName = getSafeName(state.namespace, toProperCase(id));
 
   const schemas: string[] = [];
   const staticTypes: string[] = [];
@@ -208,38 +248,64 @@ const generateRecord = (
     },
   });
 
-  const schema = `RT.Record(${formatRecord(record)});`;
-  const type = `RT.Static<typeof ${typeName}>;`
+  const recordSignature = Object.keys(record).join(",");
 
-  if (state.shapes.has(schema)) {
-    const existingTypename = state.shapes.get(schema)!;
+  if (state.shapes.has(recordSignature)) {
+    const [existingTypename, existingRecord] = state.shapes.get(
+      recordSignature
+    )!;
 
-    return { schemas: [], staticTypes: [], recordName: existingTypename };
+    const merged = merge(existingRecord, record);
+
+    if(equals(existingRecord, merged)){
+      return { schemas: [], staticTypes: [], type: existingTypename};
+    }
+
+    const newName = toProperCase(id) === existingTypename ? existingTypename : getSafeName(state.namespace,`${toProperCase(id)}${existingTypename}`);
+
+    if(newName !== existingTypename){
+      state.changeGraph[existingTypename] = newName;
+    }
+
+    state.shapes.set(recordSignature, [newName, merged]);
+
+    return { schemas: [], staticTypes: [], type: newName};
   }
 
-  state.shapes.set(schema, typeName);
-  schemas.push(`export const ${typeName} = ${schema}`);
-  staticTypes.push(`export type ${typeName} = ${type}`);
+  const typeName = getSafeName(state.namespace, toProperCase(id));
 
-  return { schemas, staticTypes, recordName: typeName };
+  state.shapes.set(recordSignature, [typeName, record]);
+
+  return { schemas, staticTypes, type: typeName };
 };
 
 export const runtypeVisitor: Visitor<VisitorState> = {
   VariableDeclarator(path, state) {
     const id = path.get("id") as NodePath<Identifier>;
+
     const init = path.get("init");
 
     if (init.isObjectExpression()) {
-      const { schemas, staticTypes } = generateRecord(
+      generateRecord(
         id.node.name,
         init,
         state
       );
-
-      state.output += prettierFormat(
-        zip(schemas, staticTypes).flat().join("\n"),
-        { parser: "babel" }
-      );
     }
   },
+};
+
+export const formatState = ({ shapes, output, changeGraph }: VisitorState) => {
+  const schemas = Array.from(shapes.values()).reduce(
+      (output, [typeName, record]) => {
+        const ident = followChangeGraph(typeName, changeGraph);
+        const schema = `export const ${ident} = RT.Record(${formatRecord(record, changeGraph)});`;
+        const type = `export type ${ident} = RT.Static<typeof ${typeName}>;`;
+
+        return `${output}${schema}\n${type}\n\n`;
+      },
+      ""
+  );
+
+  return prettierFormat(output+schemas, {parser: "babel"});
 };

@@ -1,50 +1,61 @@
 #!/usr/bin/env node
 
-import {parseAndTraverse} from "./traverse-entry";
-import {runtypeVisitor} from "./runtype-visitor";
-import {Readable} from "stream";
+import { parseAndTraverse } from "./traverse-entry";
+import {formatState, runtypeVisitor} from "./runtype-visitor";
+import { Readable } from "stream";
+import { options } from "yargs";
+import { createReadStream, promises as fs } from "fs";
+import { join } from "path";
+import Socket = NodeJS.Socket;
 
-const maybeParseJson = (input: string) => {
-   try{
-      JSON.parse(input);
-      return `const JSONSchema = ${input}`;
-   }catch(e){
-      return input;
-   }
+const argv = options({
+  in: { type: "string", description: "In-file" },
+  name: { type: "string", description: "Name of the top-level schema." },
+}).argv;
+
+const maybeParseJson = (input: string, topLevelName: string = "Schema") => {
+  try {
+    JSON.parse(input);
+    return `const ${topLevelName} = ${input}`;
+  } catch (e) {
+    return input;
+  }
 };
 
-const collectFromInStream = () => new Promise((res, rej) => {
-   const buffers : Buffer[] = [];
-   const inStream = process.openStdin();
+const collectFromStream = (stream: Readable | Socket): Promise<Buffer> =>
+  new Promise((res, rej) => {
+    const buffers: Buffer[] = [];
 
-   inStream.on('data', (chunk) => {
-      buffers.push(chunk)
-   });
+    stream.on("data", (chunk) => buffers.push(chunk));
+    stream.once("end", () => res(Buffer.concat(buffers)));
+    stream.once("error", rej);
+  });
 
-   inStream.on("end", () => {
-      res( Buffer.concat(buffers).toString('utf8') );
-   });
-
-   inStream.on("error", rej);
-});
-
-const pipeToStdout = (output: string) => Readable.from(output).pipe(process.stdout);
+const pipeToStdout = (output: string) =>
+  Readable.from(output).pipe(process.stdout);
 
 const getInput = async () => {
-   if(process.argv.slice(2).length === 0){
-      return collectFromInStream();
-   }
-}
+  if (!argv.in) {
+    return (await collectFromStream(process.openStdin())).toString();
+  } else {
+    const path = join(process.cwd(), argv.in);
+    await fs.stat(path);
+
+    return (await collectFromStream(createReadStream(path))).toString();
+  }
+};
 
 (async () => {
-   const input = await getInput() as string;
+  const input = (await getInput()) as string;
 
-   const code = maybeParseJson(input);
-   const {output} = parseAndTraverse(
-       code,
-       runtypeVisitor,
-       {shapes: new Map<string, string>(), namespace: new Set<string>(), output: ""}
-   );
+  const code = maybeParseJson(input, argv.name);
+  const initialState = {
+    shapes: new Map<string, [string, Record<string, string>]>(),
+    namespace: new Set<string>(),
+    output: "import * as RT from 'runtypes'\n",
+    changeGraph: {},
+  };
+  const output = formatState(parseAndTraverse(code, runtypeVisitor, initialState));
 
-   pipeToStdout(`import * as RT from 'runtypes' \n${output}`);
+  pipeToStdout(` ${output}`);
 })();

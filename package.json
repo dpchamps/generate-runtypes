@@ -6,16 +6,27 @@
   "scripts": {
     "format": "prettier --write ./src/**/*.ts",
     "test": "jest --collectCoverage",
-    "build": "tsc"
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "bin": {
+    "generateRuntypes": "./dist/index.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@babel/parser": "^7.9.4",
+    "@babel/traverse": "^7.9.5",
+    "@babel/types": "^7.9.5",
     "@types/babel__traverse": "^7.0.10",
+    "@types/glob": "^7.1.1",
     "@types/jest": "^26.0.0",
     "@types/node": "^13.11.1",
     "@types/ramda": "^0.27.6",
+    "@types/react": "^16.9.34",
+    "@types/react-router-dom": "^5.1.4",
+    "@types/yargs": "^15.0.5",
     "jest": "^26.0.1",
     "prettier": "^2.0.5",
     "runtypes": "^4.2.0",
@@ -24,13 +35,8 @@
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "@babel/parser": "^7.9.4",
-    "@babel/traverse": "^7.9.5",
-    "@babel/types": "^7.9.5",
-    "@types/glob": "^7.1.1",
-    "@types/react": "^16.9.34",
-    "@types/react-router-dom": "^5.1.4",
     "glob": "^7.1.6",
-    "ramda": "^0.27.0"
+    "ramda": "^0.27.0",
+    "yargs": "^15.3.1"
   }
 }
