@@ -1,9 +1,22 @@
 import * as Types from "@babel/types";
-import {Expression, SpreadElement, JSXNamespacedName, ArgumentPlaceholder} from "@babel/types";
+import {
+  Expression,
+  SpreadElement,
+  JSXNamespacedName,
+  ArgumentPlaceholder,
+  Identifier,
+  CallExpression,
+} from "@babel/types";
+
+type Expr =
+  | Expression
+  | SpreadElement
+  | JSXNamespacedName
+  | ArgumentPlaceholder;
 
 const createIdentifier = (name: string) => Types.identifier(name);
 
-const createCallExpression = (name: string, ...params: (Expression | SpreadElement | JSXNamespacedName | ArgumentPlaceholder)[]) =>
+const createCallExpression = (name: string, ...params: Expr[]) =>
   Types.callExpression(createIdentifier(name), params);
 
 export const createString = () => createIdentifier("RT.String");
@@ -16,44 +29,74 @@ export const createBoolean = () => createIdentifier("RT.Boolean");
 
 export const createFunction = () => createIdentifier("RT.Function");
 
-export const createArray = (type: string) => createCallExpression("RT.Array", createIdentifier(type));
+export const createArray = (expr: Expr | CallExpression) =>
+  createCallExpression("RT.Array", expr);
 
-export const createTuple = (...types: string[]) => createCallExpression("RT.Tuple", ...types.map(createIdentifier));
+export const createTuple = (...exprs: (CallExpression | Expr)[]) =>
+  createCallExpression("RT.Tuple", ...exprs);
 
+export const createStaticType = (name: string) =>
+    Types.typeAlias(
+        Types.identifier(name),
+        null,
+        Types.genericTypeAnnotation(
+            Types.identifier("RT.Static"),
+            Types.typeParameterInstantiation([
+                Types.typeofTypeAnnotation(
+                    Types.genericTypeAnnotation(
+                        Types.identifier(name)
+                    )
+                )
+            ])
+        )
+    );
 
 export type CompileType =
-    {
-        type: "string"
-    } |
-    {
-        type: "number"
-    } |
-    {
-        type: "null"
-    } |
-    {
-        type: "boolean"
-    } |
-    {
-        type: "function"
-    } |
-    {
-        type: "array",
-        ident: string
-    } |
-    {
-        type: "tuple",
-        params: string[]
+  | {
+      type: "string";
+    }
+  | {
+      type: "number";
+    }
+  | {
+      type: "null";
+    }
+  | {
+      type: "boolean";
+    }
+  | {
+      type: "function";
+    }
+  | {
+      type: "array";
+      expr: CompileType;
+    }
+  | {
+      type: "ident";
+      name: string;
+    }
+  | {
+      type: "tuple";
+      params: CompileType[];
     };
 
-export const compileType = (compileType: CompileType) => {
-    switch (compileType.type) {
-        case "string": return createString();
-        case "number": return createNumber();
-        case "null": return createNull();
-        case "boolean": return createBoolean();
-        case "function": return createFunction();
-        case "array": return createArray(compileType.ident);
-        case "tuple": return createTuple(...compileType.params);
-    }
+export const compileType = (t: CompileType): Identifier | CallExpression => {
+  switch (t.type) {
+    case "string":
+      return createString();
+    case "number":
+      return createNumber();
+    case "null":
+      return createNull();
+    case "boolean":
+      return createBoolean();
+    case "function":
+      return createFunction();
+    case "ident":
+      return createIdentifier(t.name);
+    case "array":
+      return createArray(compileType(t.expr));
+    case "tuple":
+      return createTuple(...t.params.map(compileType));
+  }
 };

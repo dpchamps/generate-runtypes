@@ -1,6 +1,9 @@
 import { parseAndTraverse } from "./traverse-entry";
-import { formatState, runtypeVisitor, VisitorState } from "./runtype-visitor";
-import {changeGraph} from "./change-graph";
+import { runtypeVisitor, VisitorState } from "./runtype-visitor";
+import { changeGraph } from "./change-graph";
+import {createRegistry} from "./registry";
+import generate from '@babel/generator';
+import {format} from 'prettier';
 
 export const generateTypes = (code: string) => {
   const initialState: VisitorState = {
@@ -9,7 +12,15 @@ export const generateTypes = (code: string) => {
     changeGraph: changeGraph(),
     shapes: new Map<string, [string, Record<string, string>]>(),
     astNodes: [],
+    registry: createRegistry(),
   };
 
-  return formatState(parseAndTraverse(code, runtypeVisitor, initialState));
+  const {registry} = parseAndTraverse(code, runtypeVisitor, initialState);
+
+  return format(
+      generate(
+          registry.compile()
+      ).code,
+      {parser: "babel"}
+  );
 };

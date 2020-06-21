@@ -16,7 +16,9 @@ import {
 import { format as prettierFormat } from "prettier";
 import { equals } from "ramda";
 import { formatRecord, merge, toProperCase } from "./util";
-import {ChangeGraph} from "./change-graph";
+import { ChangeGraph } from "./change-graph";
+import { CompileType } from "./type-creator";
+import {Registry} from "./registry";
 
 export interface VisitorState {
   output: string;
@@ -24,15 +26,22 @@ export interface VisitorState {
   shapes: Map<string, [string, Record<string, string>]>;
   changeGraph: ChangeGraph;
   astNodes: Node[];
+  registry: Registry;
 }
 
 interface TypeDeclarations {
   type?: string;
+  compileType?: CompileType;
 }
 
 const isValidObjectProp = ({ computed }: ObjectProperty) => !computed;
 
-const getTypeFromFunctionExpression = (_node: Function) => `RT.Function`;
+const getTypeFromFunctionExpression = (_node: Function) : TypeDeclarations => ({
+  type: `RT.Function`,
+  compileType: {
+    type: "function",
+  },
+});
 
 const getSafeName = (
   namespace: Set<string>,
@@ -50,15 +59,35 @@ const getSafeName = (
   return safeName;
 };
 
-const getTypeFromLiteral = (node: Literal) => {
+const getTypeFromLiteral = (node: Literal): TypeDeclarations => {
   if (isStringLiteral(node) || isTemplateLiteral(node)) {
-    return `RT.String`;
+    return {
+      type: `RT.String`,
+      compileType: {
+        type: "string",
+      },
+    };
   } else if (isNumericLiteral(node)) {
-    return `RT.Number`;
+    return {
+      type: `RT.Number`,
+      compileType: {
+        type: "number",
+      },
+    };
   } else if (isBooleanLiteral(node)) {
-    return `RT.Boolean`;
+    return {
+      type: `RT.Boolean`,
+      compileType: {
+        type: "boolean",
+      },
+    };
   } else if (isNullLiteral(node)) {
-    return `RT.Null`;
+    return {
+      type: `RT.Null`,
+      compileType: {
+        type: "null",
+      },
+    };
   } else {
     throw new Error(
       `Encountered an invalid type ${node.type} for type conversion.`
@@ -84,68 +113,77 @@ const extractSchemas = (
   parentKey?: string
 ): TypeDeclarations => {
   if (path.isLiteral()) {
-    return {
-      type: getTypeFromLiteral(path.node),
-    };
+    return getTypeFromLiteral(path.node);
   } else if (path.isArrayExpression()) {
-    const { type } = generateCollection(path, state, parentKey);
-
-    return {
-      type,
-    };
+    return generateCollection(path, state, parentKey);
   } else if (path.isFunction()) {
-    return {
-      type: getTypeFromFunctionExpression(path.node),
-    };
+    return getTypeFromFunctionExpression(path.node)
   } else if (path.isObjectExpression()) {
-    const { type } = generateRecord(
+    return generateRecord(
       parentKey || "AnonymousSchema",
       path,
       state
     );
-
-    return {
-      type,
-    };
   }
 
   return { type: undefined };
 };
 
-const reduceElements = (els: NodePath<any>[], state: VisitorState, parentKey?: string) => els.reduce<{types: Set<string>, collection: string[]}>(
-    ({types, collection}, path) => {
-      const {type} = extractSchemas(path, state, parentKey);
+const reduceElements = (
+  els: NodePath<any>[],
+  state: VisitorState,
+  parentKey?: string
+) =>
+  els.reduce<{ types: Set<string>; collection: TypeDeclarations[] }>(
+    ({ types, collection }, path) => {
+      const { type, compileType } = extractSchemas(path, state, parentKey);
 
-      if(type){
+      if (type) {
         types.add(type);
-        collection.push(type);
+        collection.push({ type, compileType });
       }
 
-      return {types, collection};
+      return { types, collection };
     },
-    {types: new Set(), collection: []}
-);
+    { types: new Set(), collection: [] }
+  );
 
 const generateCollection = (
   path: NodePath<ArrayExpression>,
   state: VisitorState,
   parentKey?: string
 ): TypeDeclarations => {
+  const { types, collection } = reduceElements(
+    path.get("elements"),
+    state,
+    parentKey
+  );
 
-  const {types, collection} = reduceElements(path.get("elements"), state, parentKey);
+  if (collection.length === 0) return { type: undefined };
 
-  if (types.size === 0) return { type: undefined };
-
-  const collectionType =
-    types.size === 1
-      ? `RT.Array(${collection[0]})`
-      : `RT.Tuple(${collection.join(", ")})`;
-
-  return { type: collectionType };
+  return types.size === 1
+    ? {
+        type: `RT.Array(${collection[0].type!})`,
+        compileType: {
+          type: "array",
+          expr: collection[0].compileType!,
+        },
+      }
+    : {
+        type: `RT.Tuple(${collection.map(({type}) => type!).join(", ")})`,
+        compileType: {
+          type: "tuple",
+          params: collection.map(({compileType}) => compileType!),
+        },
+      };
 };
 
-const collectRecordFromExpression = (oExp: NodePath<ObjectExpression>, state: VisitorState) => {
+const collectRecordFromExpression = (
+  oExp: NodePath<ObjectExpression>,
+  state: VisitorState
+) => {
   const record: Record<string, string> = {};
+  const betterRecord : Record<string, CompileType> = {};
 
   oExp.traverse({
     ObjectProperty(path) {
@@ -153,17 +191,18 @@ const collectRecordFromExpression = (oExp: NodePath<ObjectExpression>, state: Vi
       const key = extractPropertyName(path);
       const value = path.get("value");
 
-      const { type } = extractSchemas(value, state, key);
+      const { type, compileType } = extractSchemas(value, state, key);
 
       if (!type) return;
 
       record[key] = type;
+      betterRecord[key] = compileType!;
 
       path.skip();
     },
   });
 
-  return record;
+  return {record, betterRecord};
 };
 
 const generateRecord = (
@@ -171,8 +210,10 @@ const generateRecord = (
   oExp: NodePath<ObjectExpression>,
   state: VisitorState
 ): TypeDeclarations => {
+  const {record, betterRecord} = collectRecordFromExpression(oExp, state);
 
-  const record = collectRecordFromExpression(oExp, state);
+  state.registry.add(id, betterRecord);
+
   const recordSignature = Object.keys(record).join(",");
 
   if (state.shapes.has(recordSignature)) {
@@ -183,7 +224,13 @@ const generateRecord = (
     const merged = merge(existingRecord, record);
 
     if (equals(existingRecord, merged)) {
-      return { type: existingTypename };
+      return {
+        type: existingTypename,
+        compileType: {
+          type: "ident",
+          name: existingTypename
+        }
+      };
     }
 
     const newName =
@@ -195,19 +242,31 @@ const generateRecord = (
           );
 
     if (newName !== existingTypename) {
-      state.changeGraph.add(existingTypename, newName)
+      state.changeGraph.add(existingTypename, newName);
     }
 
     state.shapes.set(recordSignature, [newName, merged]);
 
-    return { type: newName };
+    return {
+      type: newName,
+      compileType: {
+        type: "ident",
+        name: newName
+      }
+    };
   }
 
   const typeName = getSafeName(state.namespace, toProperCase(id));
 
   state.shapes.set(recordSignature, [typeName, record]);
 
-  return { type: typeName };
+  return {
+    type: typeName,
+    compileType: {
+      type: "ident",
+      name: typeName
+    }
+  };
 };
 
 export const runtypeVisitor: Visitor<VisitorState> = {

@@ -1,4 +1,4 @@
-import {ChangeGraph} from "./change-graph";
+import { ChangeGraph } from "./change-graph";
 
 const camelCaseMatcher = /_(.)?/g;
 
