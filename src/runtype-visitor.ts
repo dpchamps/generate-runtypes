@@ -11,32 +11,24 @@ import {
   Literal,
   ObjectExpression,
   ObjectProperty,
+  Node,
 } from "@babel/types";
 import { format as prettierFormat } from "prettier";
-import {equals} from "ramda";
+import { equals } from "ramda";
+import { formatRecord, merge, toProperCase } from "./util";
+import {ChangeGraph} from "./change-graph";
 
 export interface VisitorState {
   output: string;
   namespace: Set<string>;
   shapes: Map<string, [string, Record<string, string>]>;
-  changeGraph: Record<string, string>;
+  changeGraph: ChangeGraph;
+  astNodes: Node[];
 }
 
 interface TypeDeclarations {
-  schemas: string[];
-  staticTypes: string[];
   type?: string;
 }
-
-const camelCaseMatcher = /_(.)?/g;
-const camelCaseReplacer = (_: unknown, p1: string | undefined) =>
-  typeof p1 !== "undefined" ? p1.toUpperCase() : "";
-
-const toProperCase = (input: string) =>
-  `${input[0].toUpperCase()}${input.slice(1)}`.replace(
-    camelCaseMatcher,
-    camelCaseReplacer
-  );
 
 const isValidObjectProp = ({ computed }: ObjectProperty) => !computed;
 
@@ -54,6 +46,7 @@ const getSafeName = (
     return getSafeName(namespace, baseName, Number(check) + 1);
 
   namespace.add(safeName);
+
   return safeName;
 };
 
@@ -85,146 +78,74 @@ const extractPropertyName = (objectProperty: NodePath<ObjectProperty>) => {
   throw new Error("Invalid property type");
 };
 
-const merge = (
-  recordA: Record<string, string>,
-  recordB: Record<string, string>
-) => {
-  const merged: Record<string, string> = {};
-
-  Object.entries(recordA).forEach(([k, v]) => {
-    const strippedUnion = v.replace(/^Union\((.+)\)$/, "$1");
-    const right = recordB[k];
-    merged[k] = v.includes(right) ? v : `Union(${strippedUnion},${right})`;
-  });
-
-  return merged;
-};
-
-const followChangeGraph = (id: string, graph: Record<string, string>, iterations = 0) : string => {
-  if(iterations > 500){
-    throw new Error(`Oops, that's crazy!`);
-  }
-
-  if(id in graph){
-    return followChangeGraph(graph[id], graph, iterations + 1);
-  }
-
-  return id;
-};
-
 const extractSchemas = (
   path: NodePath<any>,
   state: VisitorState,
   parentKey?: string
-) => {
+): TypeDeclarations => {
   if (path.isLiteral()) {
     return {
-      schemas: [],
-      staticTypes: [],
       type: getTypeFromLiteral(path.node),
     };
   } else if (path.isArrayExpression()) {
-    const {
-      schemas: subSchemas,
-      staticTypes: subStaticTypes,
-      type,
-    } = generateCollection(path, state, parentKey);
+    const { type } = generateCollection(path, state, parentKey);
 
     return {
-      schemas: [...subSchemas.flat()],
-      staticTypes: [...subStaticTypes.flat()],
       type,
     };
   } else if (path.isFunction()) {
     return {
-      schemas: [],
-      staticTypes: [],
       type: getTypeFromFunctionExpression(path.node),
     };
   } else if (path.isObjectExpression()) {
-    const {
-      schemas: subSchemas,
-      staticTypes: subStaticTypes,
-      type,
-    } = generateRecord(parentKey || "AnonymousSchema", path, state);
+    const { type } = generateRecord(
+      parentKey || "AnonymousSchema",
+      path,
+      state
+    );
 
     return {
-      schemas: [...subSchemas.flat()],
-      staticTypes: [...subStaticTypes.flat()],
       type,
     };
   }
 
-  return { schemas: [], staticTypes: [], type: undefined };
+  return { type: undefined };
 };
 
-const formatRecord = (
-  record: Record<string, string | Record<string, string>>,
-  changeGraph: Record<string, string>,
-  level = 1
-): string =>
-  "{\n" +
-  Object.entries(record).reduce((fmt, [k, v]) => {
-    const indentation = Array(level + 1).join(" ");
+const reduceElements = (els: NodePath<any>[], state: VisitorState, parentKey?: string) => els.reduce<{types: Set<string>, collection: string[]}>(
+    ({types, collection}, path) => {
+      const {type} = extractSchemas(path, state, parentKey);
 
-    /* istanbul ignore else */
-    if (typeof v === "string") {
-      return `${fmt}${indentation}${k}:${followChangeGraph(v, changeGraph)},\n`;
-    }
+      if(type){
+        types.add(type);
+        collection.push(type);
+      }
 
-    //todo: this is not a possible code path *yet*, but I'd rather leave it and have it tested if it ever becomes possible.
-    /* istanbul ignore next */
-    const nested = formatRecord(v, changeGraph, level + 1);
-    /* istanbul ignore next */
-    return `${fmt}${indentation}${k}:${nested},\n`;
-  }, "") +
-  "\n}";
+      return {types, collection};
+    },
+    {types: new Set(), collection: []}
+);
 
 const generateCollection = (
   path: NodePath<ArrayExpression>,
   state: VisitorState,
   parentKey?: string
 ): TypeDeclarations => {
-  const types = new Set();
-  const collection: unknown[] = [];
 
-  const schemas: string[] = [];
-  const staticTypes: string[] = [];
+  const {types, collection} = reduceElements(path.get("elements"), state, parentKey);
 
-  for (const el of path.get("elements")) {
-    const {
-      schemas: subSchemas,
-      staticTypes: subStaticTypes,
-      type,
-    } = extractSchemas(el, state, parentKey);
-
-    if (!type) continue;
-
-    schemas.unshift(...subSchemas);
-    staticTypes.unshift(...subStaticTypes);
-    types.add(type);
-    collection.push(type);
-  }
-
-  if (types.size === 0) return { schemas: [], staticTypes: [] };
+  if (types.size === 0) return { type: undefined };
 
   const collectionType =
     types.size === 1
       ? `RT.Array(${collection[0]})`
       : `RT.Tuple(${collection.join(", ")})`;
 
-  return { schemas, staticTypes, type: collectionType };
+  return { type: collectionType };
 };
 
-const generateRecord = (
-  id: string,
-  oExp: NodePath<ObjectExpression>,
-  state: VisitorState
-): TypeDeclarations => {
+const collectRecordFromExpression = (oExp: NodePath<ObjectExpression>, state: VisitorState) => {
   const record: Record<string, string> = {};
-
-  const schemas: string[] = [];
-  const staticTypes: string[] = [];
 
   oExp.traverse({
     ObjectProperty(path) {
@@ -232,22 +153,26 @@ const generateRecord = (
       const key = extractPropertyName(path);
       const value = path.get("value");
 
-      const {
-        schemas: subSchemas,
-        staticTypes: subStaticTypes,
-        type,
-      } = extractSchemas(value, state, key);
+      const { type } = extractSchemas(value, state, key);
 
       if (!type) return;
 
-      schemas.unshift(...subSchemas);
-      staticTypes.unshift(...subStaticTypes);
       record[key] = type;
 
       path.skip();
     },
   });
 
+  return record;
+};
+
+const generateRecord = (
+  id: string,
+  oExp: NodePath<ObjectExpression>,
+  state: VisitorState
+): TypeDeclarations => {
+
+  const record = collectRecordFromExpression(oExp, state);
   const recordSignature = Object.keys(record).join(",");
 
   if (state.shapes.has(recordSignature)) {
@@ -257,26 +182,32 @@ const generateRecord = (
 
     const merged = merge(existingRecord, record);
 
-    if(equals(existingRecord, merged)){
-      return { schemas: [], staticTypes: [], type: existingTypename};
+    if (equals(existingRecord, merged)) {
+      return { type: existingTypename };
     }
 
-    const newName = toProperCase(id) === existingTypename ? existingTypename : getSafeName(state.namespace,`${toProperCase(id)}${existingTypename}`);
+    const newName =
+      toProperCase(id) === existingTypename
+        ? existingTypename
+        : getSafeName(
+            state.namespace,
+            `${toProperCase(id)}${existingTypename}`
+          );
 
-    if(newName !== existingTypename){
-      state.changeGraph[existingTypename] = newName;
+    if (newName !== existingTypename) {
+      state.changeGraph.add(existingTypename, newName)
     }
 
     state.shapes.set(recordSignature, [newName, merged]);
 
-    return { schemas: [], staticTypes: [], type: newName};
+    return { type: newName };
   }
 
   const typeName = getSafeName(state.namespace, toProperCase(id));
 
   state.shapes.set(recordSignature, [typeName, record]);
 
-  return { schemas, staticTypes, type: typeName };
+  return { type: typeName };
 };
 
 export const runtypeVisitor: Visitor<VisitorState> = {
@@ -286,26 +217,25 @@ export const runtypeVisitor: Visitor<VisitorState> = {
     const init = path.get("init");
 
     if (init.isObjectExpression()) {
-      generateRecord(
-        id.node.name,
-        init,
-        state
-      );
+      generateRecord(id.node.name, init, state);
     }
   },
 };
 
 export const formatState = ({ shapes, output, changeGraph }: VisitorState) => {
   const schemas = Array.from(shapes.values()).reduce(
-      (output, [typeName, record]) => {
-        const ident = followChangeGraph(typeName, changeGraph);
-        const schema = `export const ${ident} = RT.Record(${formatRecord(record, changeGraph)});`;
-        const type = `export type ${ident} = RT.Static<typeof ${typeName}>;`;
+    (output, [typeName, record]) => {
+      const ident = changeGraph.resolve(typeName);
+      const schema = `export const ${ident} = RT.Record(${formatRecord(
+        record,
+        changeGraph
+      )});`;
+      const type = `export type ${ident} = RT.Static<typeof ${typeName}>;`;
 
-        return `${output}${schema}\n${type}\n\n`;
-      },
-      ""
+      return `${output}${schema}\n${type}\n\n`;
+    },
+    ""
   );
 
-  return prettierFormat(output+schemas, {parser: "babel"});
+  return prettierFormat(output + schemas, { parser: "babel" });
 };

@@ -1,17 +1,19 @@
 import { parseAndTraverse } from "./traverse-entry";
-import {formatState, runtypeVisitor} from "./runtype-visitor";
+import { formatState, runtypeVisitor } from "./runtype-visitor";
 import { format } from "prettier";
+import {changeGraph} from "./change-graph";
 
 describe("RunType Visitor", () => {
   const formatExpectation = (code: string) => format(code, { parser: "babel" });
   const convert = (code: string) =>
     formatState(
-        parseAndTraverse(code, runtypeVisitor, {
-          output: "",
-          namespace: new Set<string>(),
-          shapes: new Map<string, [string, Record<string, string>]>(),
-            changeGraph: {}
-        })
+      parseAndTraverse(code, runtypeVisitor, {
+        output: "",
+        namespace: new Set<string>(),
+        shapes: new Map<string, [string, Record<string, string>]>(),
+        changeGraph: changeGraph(),
+        astNodes: [],
+      })
     );
 
   it(`Converts basic records`, () => {
@@ -136,8 +138,8 @@ describe("RunType Visitor", () => {
     expect(convert(code)).toEqual(expectation);
   });
 
-    it(`Converts collections with similar merged shapes`, () => {
-        const code = `
+  it(`Converts collections with similar merged shapes`, () => {
+    const code = `
        const complexCollection = {
          collection: [
            { name : "Jerry Seinfeld", comedy: "clean" },
@@ -145,7 +147,7 @@ describe("RunType Visitor", () => {
          ]
        }
        `;
-        const expectation = formatExpectation(`
+    const expectation = formatExpectation(`
             
         export const Collection = RT.Record({
           name: RT.String,
@@ -160,8 +162,8 @@ describe("RunType Visitor", () => {
         
       `);
 
-        expect(convert(code)).toEqual(expectation);
-    });
+    expect(convert(code)).toEqual(expectation);
+  });
 
   it(`Converts deep collections`, () => {
     const code = `

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { parseAndTraverse } from "./traverse-entry";
-import {formatState, runtypeVisitor} from "./runtype-visitor";
+import { formatState, runtypeVisitor } from "./runtype-visitor";
 import { Readable } from "stream";
 import { options } from "yargs";
 import { createReadStream, promises as fs } from "fs";
@@ -55,7 +55,9 @@ const getInput = async () => {
     output: "import * as RT from 'runtypes'\n",
     changeGraph: {},
   };
-  const output = formatState(parseAndTraverse(code, runtypeVisitor, initialState));
+  const output = formatState(
+    parseAndTraverse(code, runtypeVisitor, initialState)
+  );
 
   pipeToStdout(` ${output}`);
 })();
