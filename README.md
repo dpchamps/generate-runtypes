@@ -129,6 +129,8 @@ For example, for the following top-level object
 Would result in the following schemas:
 
 ```typescript
+import * as RT from "runtypes";
+
 export const Stats = RT.Record({
   hp: RT.Number,
   strength: RT.Union(RT.Number, RT.String),
