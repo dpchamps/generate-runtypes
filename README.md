@@ -9,7 +9,7 @@ The output tries to be intuitive, but likely needs some massaging.
 ### try it out
 
 ``` 
-curl -s https://pokeapi.co/api/v2/pokemon/bulbasaur | npx generateRuntypes | less
+curl -s https://pokeapi.co/api/v2/pokemon/bulbasaur | npx generateRuntypes --name Pokeman | less
 ``` 
 
 Will output:
