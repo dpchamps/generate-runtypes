@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
-import { parseAndTraverse } from "./traverse-entry";
-import { formatState, runtypeVisitor } from "./runtype-visitor";
 import { Readable } from "stream";
 import { options } from "yargs";
 import { createReadStream, promises as fs } from "fs";
 import { join } from "path";
 import Socket = NodeJS.Socket;
+import {generateTypes} from "./generate-types";
 
 const argv = options({
   in: { type: "string", description: "In-file" },
@@ -49,15 +48,7 @@ const getInput = async () => {
   const input = (await getInput()) as string;
 
   const code = maybeParseJson(input, argv.name);
-  const initialState = {
-    shapes: new Map<string, [string, Record<string, string>]>(),
-    namespace: new Set<string>(),
-    output: "import * as RT from 'runtypes'\n",
-    changeGraph: {},
-  };
-  const output = formatState(
-    parseAndTraverse(code, runtypeVisitor, initialState)
-  );
+  const output = generateTypes(code);
 
   pipeToStdout(` ${output}`);
 })();

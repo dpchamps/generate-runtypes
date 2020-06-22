@@ -140,7 +140,7 @@ describe("RunType Visitor", () => {
         import * as RT from "runtypes";
         export const Collection = RT.Record({
           name: RT.String,
-          comedy: Union(RT.String, RT.Number),
+          comedy: RT.Union(RT.String, RT.Number),
         });
         export type Collection = RT.Static<typeof Collection>;
         export const ComplexCollection = RT.Record({
@@ -204,7 +204,7 @@ describe("RunType Visitor", () => {
         });
         export type Stats = RT.Static<typeof Stats>;
         export const FootballBasketball = RT.Record({
-          stats: Union(Stats, Stats1),
+          stats: RT.Union(Stats, Stats1),
         });
         export type FootballBasketball = RT.Static<typeof FootballBasketball>;
         export const Stats1 = RT.Record({

@@ -1,6 +1,7 @@
 export interface ChangeGraph {
   add: (from: string, to: string) => void;
   resolve: (ident: string) => string;
+  swap: (ident: string) => boolean;
 }
 
 export const changeGraph = (): ChangeGraph => {
@@ -17,5 +18,14 @@ export const changeGraph = (): ChangeGraph => {
 
       return ident;
     },
+    swap(ident: string): boolean{
+      if(!(ident in graph)) return false;
+
+      const existing = this.resolve(ident);
+      delete graph[ident];
+      this.add(existing, ident);
+
+      return true;
+    }
   };
 };
