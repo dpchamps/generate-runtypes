@@ -12,10 +12,9 @@ The output tries to be intuitive, but likely needs some massaging.
 curl -s https://pokeapi.co/api/v2/pokemon/bulbasaur | npx generateRuntypes | less
 ``` 
 
-<details>
-  <summary>Outputs something like this</summary>
-  <pre>
-   import * as RT from "runtypes";
+Will output:
+```typescript
+import * as RT from "runtypes";
   export const Ability = RT.Record({
     name: RT.String,
     url: RT.String,
@@ -84,9 +83,8 @@ curl -s https://pokeapi.co/api/v2/pokemon/bulbasaur | npx generateRuntypes | les
     weight: RT.Number,
   });
   export type Pokeman = RT.Static<typeof Pokeman>;
-  
-  </pre>
-</details>
+```
+
 
 
 The CLI accepts two arguments:

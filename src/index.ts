@@ -50,5 +50,5 @@ const getInput = async () => {
   const code = maybeParseJson(input, argv.name);
   const output = generateTypes(code);
 
-  pipeToStdout(` ${output}`);
+  pipeToStdout(`${output}`);
 })();
