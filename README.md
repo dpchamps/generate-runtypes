@@ -137,14 +137,14 @@ export const Stats = RT.Record({
 });
 export type Stats = RT.Static<typeof Stats>;
 
-export const VillianHero = RT.Record({
+export const Hero = RT.Record({
   stats: Stats,
 });
-export type VillianHero = RT.Static<typeof VillianHero>;
+export type Hero = RT.Static<typeof Hero>;
 
 export const Schema = RT.Record({
-  hero: VillianHero,
-  villian: VillianHero,
+  hero: Hero,
+  villian: Hero,
 });
 export type Schema = RT.Static<typeof Schema>;
 ```
