@@ -1,7 +1,7 @@
 import { toProperCase } from "./util";
 import { changeGraph } from "./change-graph";
 import * as Types from "@babel/types";
-import {compileType, CompileType, createStaticType} from "./type-creator";
+import { compileType, CompileType, createStaticType } from "./type-creator";
 
 type RegistryRecord = Record<string, CompileType | CompileType[]>;
 
@@ -36,12 +36,12 @@ const safeNameCreator = (namespace: Set<string>) => {
   return getSafeName;
 };
 
-const isEqualType = (a: CompileType, b: CompileType) : boolean => {
-  if(a.type === "array" && b.type === "array"){
-    return isEqualType(a.expr, b.expr)
-  }else if(a.type === "tuple" && b.type === "tuple"){
-    return a.params.every((exprA, idx) => isEqualType(exprA, b.params[idx]))
-  }else if(a.type === "ident" && b.type === "ident"){
+const isEqualType = (a: CompileType, b: CompileType): boolean => {
+  if (a.type === "array" && b.type === "array") {
+    return isEqualType(a.expr, b.expr);
+  } else if (a.type === "tuple" && b.type === "tuple") {
+    return a.params.every((exprA, idx) => isEqualType(exprA, b.params[idx]));
+  } else if (a.type === "ident" && b.type === "ident") {
     return a.name === b.name;
   }
 
@@ -57,8 +57,8 @@ const merge = (
   Object.entries(existing).forEach(([k, v]) => {
     const right = toMerge[k];
     if (
-      (Array.isArray(v) && !v.some((x) => isEqualType(x, right)))
-        || (!Array.isArray(v) && !isEqualType(v, right))
+      (Array.isArray(v) && !v.some((x) => isEqualType(x, right))) ||
+      (!Array.isArray(v) && !isEqualType(v, right))
     ) {
       existing[k] = Array.isArray(v) ? [...v, right] : [v, right];
       didUpdate = true;
@@ -96,7 +96,7 @@ export const createRegistry = (): Registry => {
 
     if (newName !== existingType) {
       changeset.add(existingType, newName);
-      namespace.delete(existingType)
+      namespace.delete(existingType);
     }
 
     state.set(signature, {
@@ -122,22 +122,22 @@ export const createRegistry = (): Registry => {
     return type;
   };
 
-  const extractUpToDateType = (type: CompileType) : CompileType => {
-    if(type.type === "ident"){
+  const extractUpToDateType = (type: CompileType): CompileType => {
+    if (type.type === "ident") {
       return {
         type: "ident",
-        name: changeset.resolve(type.name)
-      }
-    }else if(type.type === "tuple"){
+        name: changeset.resolve(type.name),
+      };
+    } else if (type.type === "tuple") {
       return {
         type: "tuple",
-        params: type.params.map(extractUpToDateType)
-      }
-    }else if(type.type === "array"){
+        params: type.params.map(extractUpToDateType),
+      };
+    } else if (type.type === "array") {
       return {
         type: "array",
-        expr: extractUpToDateType(type.expr)
-      }
+        expr: extractUpToDateType(type.expr),
+      };
     }
 
     return type;
@@ -217,9 +217,7 @@ export const createRegistry = (): Registry => {
               Types.variableDeclarator(Types.identifier(type), recordNode),
             ])
           ),
-          Types.exportNamedDeclaration(
-              createStaticType(type)
-          )
+          Types.exportNamedDeclaration(createStaticType(type))
         );
       }
 

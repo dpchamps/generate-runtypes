@@ -1,5 +1,5 @@
 import { format } from "prettier";
-import {generateTypes} from "./generate-types";
+import { generateTypes } from "./generate-types";
 
 describe("RunType Visitor", () => {
   const formatExpectation = (code: string) => format(code, { parser: "babel" });

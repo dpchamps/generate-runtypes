@@ -13,7 +13,7 @@ import {
   ObjectProperty,
 } from "@babel/types";
 import { CompileType } from "./type-creator";
-import {Registry} from "./registry";
+import { Registry } from "./registry";
 
 export interface VisitorState {
   registry: Registry;
@@ -25,7 +25,7 @@ interface TypeDeclarations {
 
 const isValidObjectProp = ({ computed }: ObjectProperty) => !computed;
 
-const getTypeFromFunctionExpression = (_node: Function) : TypeDeclarations => ({
+const getTypeFromFunctionExpression = (_node: Function): TypeDeclarations => ({
   compileType: {
     type: "function",
   },
@@ -85,13 +85,9 @@ const extractSchemas = (
   } else if (path.isArrayExpression()) {
     return generateCollection(path, state, parentKey);
   } else if (path.isFunction()) {
-    return getTypeFromFunctionExpression(path.node)
+    return getTypeFromFunctionExpression(path.node);
   } else if (path.isObjectExpression()) {
-    return generateRecord(
-      parentKey || "AnonymousSchema",
-      path,
-      state
-    );
+    return generateRecord(parentKey || "AnonymousSchema", path, state);
   }
 
   return {};
@@ -139,7 +135,7 @@ const generateCollection = (
     : {
         compileType: {
           type: "tuple",
-          params: collection.map(({compileType}) => compileType!),
+          params: collection.map(({ compileType }) => compileType!),
         },
       };
 };
@@ -148,7 +144,7 @@ const collectRecordFromExpression = (
   oExp: NodePath<ObjectExpression>,
   state: VisitorState
 ) => {
-  const record : Record<string, CompileType> = {};
+  const record: Record<string, CompileType> = {};
 
   oExp.traverse({
     ObjectProperty(path) {
@@ -166,7 +162,7 @@ const collectRecordFromExpression = (
     },
   });
 
-  return {record};
+  return { record };
 };
 
 const generateRecord = (
@@ -174,16 +170,16 @@ const generateRecord = (
   oExp: NodePath<ObjectExpression>,
   state: VisitorState
 ): TypeDeclarations => {
-  const {record} = collectRecordFromExpression(oExp, state);
+  const { record } = collectRecordFromExpression(oExp, state);
 
   const name = state.registry.add(id, record);
 
   return {
     compileType: {
-      type : "ident",
-      name
-    }
-  }
+      type: "ident",
+      name,
+    },
+  };
 };
 
 export const runtypeVisitor: Visitor<VisitorState> = {

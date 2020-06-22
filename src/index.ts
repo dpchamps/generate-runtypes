@@ -5,7 +5,7 @@ import { options } from "yargs";
 import { createReadStream, promises as fs } from "fs";
 import { join } from "path";
 import Socket = NodeJS.Socket;
-import {generateTypes} from "./generate-types";
+import { generateTypes } from "./generate-types";
 
 const argv = options({
   in: { type: "string", description: "In-file" },

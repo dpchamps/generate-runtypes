@@ -18,14 +18,14 @@ export const changeGraph = (): ChangeGraph => {
 
       return ident;
     },
-    swap(ident: string): boolean{
-      if(!(ident in graph)) return false;
+    swap(ident: string): boolean {
+      if (!(ident in graph)) return false;
 
       const existing = this.resolve(ident);
       delete graph[ident];
       this.add(existing, ident);
 
       return true;
-    }
+    },
   };
 };

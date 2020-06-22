@@ -36,20 +36,18 @@ export const createTuple = (...exprs: (CallExpression | Expr)[]) =>
   createCallExpression("RT.Tuple", ...exprs);
 
 export const createStaticType = (name: string) =>
-    Types.typeAlias(
-        Types.identifier(name),
-        null,
-        Types.genericTypeAnnotation(
-            Types.identifier("RT.Static"),
-            Types.typeParameterInstantiation([
-                Types.typeofTypeAnnotation(
-                    Types.genericTypeAnnotation(
-                        Types.identifier(name)
-                    )
-                )
-            ])
-        )
-    );
+  Types.typeAlias(
+    Types.identifier(name),
+    null,
+    Types.genericTypeAnnotation(
+      Types.identifier("RT.Static"),
+      Types.typeParameterInstantiation([
+        Types.typeofTypeAnnotation(
+          Types.genericTypeAnnotation(Types.identifier(name))
+        ),
+      ])
+    )
+  );
 
 export type CompileType =
   | {
