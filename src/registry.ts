@@ -90,8 +90,7 @@ export const createRegistry = (): Registry => {
       signature
     )!;
 
-    if (!merge(existingRecord, record)) return existingType;
-
+    merge(existingRecord, record)
     const newName = getNewName(id, existingType);
 
     if (newName !== existingType) {

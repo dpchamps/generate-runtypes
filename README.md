@@ -14,7 +14,7 @@ curl -s https://pokeapi.co/api/v2/pokemon/bulbasaur | npx generate-runtypes | le
 
 <details>
   <summary>Outputs something like this</summary>
-  ```typescript
+  <pre>
    import * as RT from "runtypes";
   export const Ability = RT.Record({
     name: RT.String,
@@ -85,5 +85,67 @@ curl -s https://pokeapi.co/api/v2/pokemon/bulbasaur | npx generate-runtypes | le
   });
   export type Pokeman = RT.Static<typeof Pokeman>;
   
-  ```
+  </pre>
 </details>
+
+
+The CLI accepts two arguments:
+
+| Command | Description                |
+|---------|----------------------------|
+| --in    | A file to process          |
+| --name  | Top-Level Schema To Export |
+
+Due to the type resolution-strategy, the supplied name _may_ be overwritten.
+
+If no file `--in` file is supplied, the node process will open an stdin socket which allows you to pipe sources into it.
+
+All results are piped to `stdout` allowing you to redirect the output to a file or another process.
+
+
+### Type-Resolution
+
+The generator maintains a registry of all records that have been generated. If similar-shaped records are found, they're merged where differing properties are union-ed.
+
+For example, for the following top-level object 
+
+```json
+{
+  "hero": {
+    "stats": {
+      "hp": 100,
+      "strength": 50
+    }
+  },
+  "villian":{
+    "stats": {
+      "hp": 10,
+      "strength": "potato"
+    }
+  }
+}
+```
+
+Would result in the following schemas:
+
+```typescript
+export const Stats = RT.Record({
+  hp: RT.Number,
+  strength: RT.Union(RT.Number, RT.String),
+});
+export type Stats = RT.Static<typeof Stats>;
+
+export const VillianHero = RT.Record({
+  stats: Stats,
+});
+export type VillianHero = RT.Static<typeof VillianHero>;
+
+export const Schema = RT.Record({
+  hero: VillianHero,
+  villian: VillianHero,
+});
+export type Schema = RT.Static<typeof Schema>;
+```
+
+Down the road, it should be possible to select different merge strategies, in order to -- for example -- favor discriminated unions when possible.
+
