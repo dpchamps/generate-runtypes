@@ -1,0 +1,17 @@
+name: pull-request
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - uses: actions/setup-node@master
+        with:
+          node-version: 12.16.1
+      - name: install
+        run: npm ci 
+      - name: build
+        run: npm run build
+      - name: test
+        run: npm run test
