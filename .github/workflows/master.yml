@@ -25,3 +25,7 @@ jobs:
         run: npm run build
       - name: test
         run: npm run test
+      - uses: actions/checkout@master
+      - uses: codecov/codecov-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
