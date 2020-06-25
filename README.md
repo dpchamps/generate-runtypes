@@ -1,4 +1,5 @@
 ![master](https://github.com/dpchamps/generate-runtypes/workflows/master/badge.svg)
+[![codecov](https://codecov.io/gh/dpchamps/generate-runtypes/branch/master/graph/badge.svg)](https://codecov.io/gh/dpchamps/generate-runtypes)
 # GenerateRuntypes
 
 GenerateRuntypes is a codegen library for generating run-time validation schemas in typescript for the [runtypes](https://github.com/pelotom/runtypes) library.
