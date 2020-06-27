@@ -46,7 +46,7 @@ describe("Change Graph", () => {
 
         graph.add("x", "y");
         expect(graph.swap('z')).toBe(false);
-        expect(graph.resolve('x')).toBe("y")
+        expect(graph.resolve('x')).toBe("y");
     });
 
     it("Should allow paths to converge", () => {
