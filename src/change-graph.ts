@@ -8,10 +8,13 @@ export const changeGraph = (): ChangeGraph => {
   const graph: Record<string, string> = {};
 
   return {
-    add: (from: string, to: string) => {
-      if (to in graph)
+    add(from: string, to: string){
+      const _from = this.resolve(from);
+      const _to = this.resolve(to);
+      if (_from === _to)
         throw new Error(`Attempting to add a cycle to the change graph.`);
-      graph[from] = to;
+
+      graph[_from] = _to;
     },
     resolve(ident: string): string {
       if (graph[ident]) return this.resolve(graph[ident]);
