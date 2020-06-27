@@ -1,4 +1,4 @@
-const camelCaseMatcher = /_(.)?/g;
+export const camelCaseMatcher = /_(.)?/g;
 
 export const camelCaseReplacer = (_: unknown, p1: string | undefined) =>
   typeof p1 !== "undefined" ? p1.toUpperCase() : "";
