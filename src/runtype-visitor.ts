@@ -66,19 +66,20 @@ const getTypeFromLiteral = (node: Literal): TypeDeclarations => {
 const extractPropertyName = (objectProperty: NodePath<ObjectProperty>) => {
   const key = objectProperty.get("key");
 
-  if (key.isStringLiteral()) {
-    return key.node.value;
+  /* istanbul ignore else */
+  if (key.isStringLiteral() || key.isNumericLiteral()) {
+    return String(key.node.value);
   } else if (key.isIdentifier()) {
     return key.node.name;
+  } else {
+    throw new Error("Unreachable");
   }
-
-  throw new Error("Invalid property type");
 };
 
 const extractSchemas = (
   path: NodePath<any>,
   state: VisitorState,
-  parentKey?: string
+  parentKey: string
 ): TypeDeclarations => {
   if (path.isLiteral()) {
     return getTypeFromLiteral(path.node);
@@ -87,7 +88,7 @@ const extractSchemas = (
   } else if (path.isFunction()) {
     return getTypeFromFunctionExpression(path.node);
   } else if (path.isObjectExpression()) {
-    return generateRecord(parentKey || "AnonymousSchema", path, state);
+    return generateRecord(parentKey, path, state);
   }
 
   return {};
@@ -96,7 +97,7 @@ const extractSchemas = (
 const reduceElements = (
   els: NodePath<any>[],
   state: VisitorState,
-  parentKey?: string
+  parentKey: string
 ) =>
   els.reduce<{ types: Set<string>; collection: TypeDeclarations[] }>(
     ({ types, collection }, path) => {
@@ -115,7 +116,7 @@ const reduceElements = (
 const generateCollection = (
   path: NodePath<ArrayExpression>,
   state: VisitorState,
-  parentKey?: string
+  parentKey: string
 ): TypeDeclarations => {
   const { types, collection } = reduceElements(
     path.get("elements"),
