@@ -255,6 +255,24 @@ describe("RunType Visitor", () => {
     expect(generateTypes(code)).toBe(expectation);
   });
 
+  it("Should ignore other valid code", () => {
+      const code = `
+       const record = {  
+        name: "dchampz"
+       }
+       const aFunction = () => \`Hi, \$\{record.name\}! \`;
+       `;
+      const expectation = formatExpectation(`
+       import * as RT from "runtypes";
+       export const Record = RT.Record({
+         name: RT.String,
+       });
+       export type Record = RT.Static<typeof Record>;
+       `);
+
+      expect(generateTypes(code)).toEqual(expectation);
+  });
+
   it("Should reject invalid literals", () => {
     const invalid1 = `
        const bad = {
@@ -271,4 +289,23 @@ describe("RunType Visitor", () => {
     expect(() => generateTypes(invalid1)).toThrowError();
     expect(() => generateTypes(invalid2)).toThrowError();
   });
+
+  it("Should generate names for literals", () => {
+      const code = `
+       const basicJson = {  
+         1: "Hello",
+         "2": 10,
+       }
+       `;
+      const expectation = formatExpectation(`
+       import * as RT from "runtypes";
+       export const BasicJson = RT.Record({
+         1: RT.String,
+         2: RT.Number,
+       });
+       export type BasicJson = RT.Static<typeof BasicJson>;
+       `);
+
+      expect(generateTypes(code)).toEqual(expectation);
+  })
 });
